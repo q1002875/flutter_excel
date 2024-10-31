@@ -1,6 +1,9 @@
+import 'dart:io'; // 导入 File
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:gsheets/gsheets.dart';
+import 'package:image_picker/image_picker.dart'; // 导入 ImagePicker
 
 final _credentials = '''
 {
@@ -31,16 +34,31 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
   bool _isLoading = false;
   String _error = '';
   final ScrollController _verticalScrollController = ScrollController();
+  final TextEditingController _inputController = TextEditingController();
+  final ImagePicker _picker = ImagePicker(); // ImagePicker 实例
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Google Sheets 讀取器'),
+        leading: IconButton(
+          // 使用 leading 属性来添加图标
+          icon: const Icon(Icons.image),
+          onPressed: _selectImage, // 添加上传图片按钮
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadGoogleSheetData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _showAddDataDialog,
+          ),
+          IconButton(
+            icon: const Icon(Icons.image),
+            onPressed: _selectImage, // 添加上传图片按钮
           ),
         ],
       ),
@@ -51,6 +69,7 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
   @override
   void dispose() {
     _verticalScrollController.dispose();
+    _inputController.dispose();
     super.dispose();
   }
 
@@ -60,7 +79,30 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
     _loadGoogleSheetData();
   }
 
+  Future<void> _addDataToSheet() async {
+    final newRow = _inputController.text.split(',');
+    try {
+      //認證
+      final gsheets = GSheets(_credentials);
+      //使用哪一個excel資料
+      final ss = await gsheets.spreadsheet(_spreadsheetId!);
+      final sheet = ss.worksheetByIndex(0);
+
+      if (sheet == null) {
+        throw Exception('找不到工作表');
+      }
+
+      await sheet.values.appendRow(newRow);
+      _loadGoogleSheetData(); // 重新加载数据以更新显示
+    } catch (e) {
+      setState(() {
+        _error = '寫入數據時發生錯誤: $e';
+      });
+    }
+  }
+
   Widget _buildBody() {
+    // 现有的 _buildBody 实现保持不变
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
@@ -110,7 +152,7 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 表頭行
+                        // 表头行
                         Row(
                           children: List.generate(
                             _data[0].length,
@@ -135,7 +177,7 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
                             ),
                           ),
                         ),
-                        // 數據行
+                        // 数据行
                         ...List.generate(
                           _data.length - 1,
                           (rowIndex) => Row(
@@ -210,5 +252,75 @@ class _GSheetsReaderPageState extends State<GSheetsReaderPage> {
       }
       return normalizedRow;
     }).toList();
+  }
+
+  // 选择图片
+  Future<void> _selectImage() async {
+    final pickedFile =
+        await _picker.pickImage(source: ImageSource.gallery); // 从图库选择图片
+    if (pickedFile != null) {
+      await _uploadImageToSheet(File(pickedFile.path)); // 上传图片到工作表
+    }
+  }
+
+  void _showAddDataDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('新增數據'),
+          content: TextField(
+            controller: _inputController,
+            decoration: const InputDecoration(hintText: '輸入數據 (逗號分隔)'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                _addDataToSheet();
+                Navigator.of(context).pop();
+              },
+              child: const Text('確定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 上传图片到 Google Sheets
+  Future<void> _uploadImageToSheet(File image) async {
+    // 此处逻辑需要实现将图片转换为可以存入 Google Sheets 的格式
+    // 你可以选择上传图片到 Google Drive，然后将文件的链接写入 Google Sheets
+    // 这里是一个示例，具体实现取决于你的需求
+
+    try {
+      final gsheets = GSheets(_credentials);
+      final ss = await gsheets.spreadsheet(_spreadsheetId!);
+      final sheet = ss.worksheetByIndex(0);
+
+      if (sheet == null) {
+        throw Exception('找不到工作表');
+      }
+
+      // 在这里添加将图片上传到 Google Drive 的逻辑，然后获取文件链接
+
+      // 假设你获得了文件链接 fileLink
+      const fileLink = 'YOUR_IMAGE_FILE_LINK'; // 替换为实际链接
+
+      // 将文件链接写入工作表的指定行
+      await sheet.values.appendRow([fileLink]); // 在工作表中添加文件链接
+
+      _loadGoogleSheetData(); // 重新加载数据以更新显示
+    } catch (e) {
+      setState(() {
+        _error = '上传图片时发生错误: $e';
+      });
+    }
   }
 }
